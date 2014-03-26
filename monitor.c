@@ -3,6 +3,9 @@
 #include <fcntl.h>
 #include <stdio.h>
 
+// STDOU_FILENO
+#include <sys/stat.h>
+
 // parse unsigned long
 #include <limits.h>
 
@@ -14,77 +17,108 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+static unsigned long int parse_ulong(char *str, int base);
 void alarm_handler(int sign);
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
 
   unsigned long int timer;
-  char *endptr, *str;
-  int base, file;
+  int file;
 
   if (argc < 4) {
-    printf("Usage: %s <seconds> <word> <file1> <file2> <file...>.\n", argv[0]);
+    printf("Usage: %s <seconds> <query> <file1> <file...>.\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
-  str = argv[1];
-  base = (argc > 2) ? atoi(argv[2]) : 10;
-  timer = strtoul(str, &endptr, base);
-
-  /* Check for various possible errors */
-
-  if((errno == ERANGE && timer == ULONG_MAX) || (errno != 0 && timer == 0)){
-    perror ("strtol");
+  if ((timer = parse_ulong(argv[1], 10)) == ULONG_MAX)
     exit(EXIT_FAILURE);
-  }
 
-  if (endptr == str){
-    fprintf(stderr, "No digits were found\n");
-    exit(EXIT_FAILURE);
-  }
-
-  if (*endptr != '\0'){
-    fprintf(stderr, "Non digit characters found\n");
-    exit(EXIT_FAILURE);
-  }
-
-  //  printf("strtol() returned %lu\n", timer);
   
   file = open(argv[3], O_RDONLY);
   if (file == -1) {
     perror(argv[3]);
     exit(EXIT_FAILURE);
   }
+  close(file);
+ 
+  pid_t childpid;  
+  int fd[2];
+  if(pipe (fd) == -1)
+    perror("Failed to create the pipe");
 
-  struct sigaction action;
-  sigset_t sigmask;
-  // install SIGALRM handler
-  action.sa_handler = alarm_handler;
-  sigemptyset(&action.sa_mask); //all signals are delivered
-  action.sa_flags = 0;
-  sigaction(SIGALRM,&action,NULL);
+  childpid = fork();
 
-  // prepare mask for 'sigsuspend'
-  sigfillset(&sigmask); //all signals blocked ...
-  sigdelset(&sigmask,SIGALRM); //...except SIGALRM
-  alarm(timer);
-  printf("Pausing ...\n");
+  if (childpid == -1){
+    perror("Failed to fork");
+    exit(EXIT_FAILURE);
+  }
 
-  execlp("tail","tail","ler"," | grep -w adeus" ,NULL); //| grep -w adeus", NULL); 
+  /* parent code*/
+  if (childpid){
+    close(fd[0]);
+    dup2(fd[1], STDOUT_FILENO);
+    close(fd[1]);
+    execlp("tail", "tail", "ler", NULL);
+  }
 
-  //while (!alarmflag) pause(); //REPLACED BY 'sigsuspend'
-  sigsuspend(&sigmask);
-
-  printf ("done");  
+  /* child code */
+  else{
+    execlp("grep", "grep", "--line-buffered", "-w", "adeus", STDOUT_FILENO, NULL);
+  }
 
   exit(EXIT_SUCCESS);
 }
 
 
 
-void alarm_handler(int sign)
-{
-  // signal(SIGALRM, pause_handler);
+void alarm_handler(int sign) {
   printf("Alarm received...\n");
-  //signal(SIGINT,pause_handler);
 }
+
+static unsigned long int parse_ulong(char *str, int base) {
+
+  char *endptr;
+  unsigned long int timer = strtoul(str, &endptr, base);
+
+ /* Check for various possible errors */
+  if((errno == ERANGE && timer == ULONG_MAX) || (errno != 0 && timer == 0)){
+    perror ("strtoul conversion error");
+    return ULONG_MAX;
+  }
+
+  if (endptr == str){
+#ifdef DEBUG  
+  fprintf(stderr, "No digits were found\n");
+#endif
+    return ULONG_MAX;
+  }
+
+  if (*endptr != '\0'){
+#ifdef DEBUG  
+  fprintf(stderr, "Non digit char found\n");
+#endif
+  return ULONG_MAX;
+  }
+  printf("strtoul() returned %lu\n", timer);
+
+  /* Successful conversion*/
+  return timer; 
+}
+
+
+  /* struct sigaction action; */
+/*   sigset_t sigmask; */
+/*   // install SIGALRM handler */
+/*   action.sa_handler = alarm_handler; */
+/*   sigemptyset(&action.sa_mask); //all signals are delivered */
+/*   action.sa_flags = 0; */
+/*   sigaction(SIGALRM,&action,NULL); */
+
+/*   // prepare mask for 'sigsuspend' */
+/*   sigfillset(&sigmask); //all signals blocked ... */
+/*   sigdelset(&sigmask,SIGALRM); //...except SIGALRM */
+/*   alarm(timer); */
+/*   printf("Pausing ...\n"); */
+  
+/*   //while (!alarmflag) pause(); //REPLACED BY 'sigsuspend' */
+/*   sigsuspend(&sigmask); */

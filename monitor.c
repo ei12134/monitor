@@ -1,3 +1,7 @@
+// compile using debug flag for error messages
+//
+// gcc monitor.c -o monitor -Wall -DDEBUG
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -17,62 +21,70 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#define READ 0
+#define WRITE 1
+#define TAIL "/usr/bin/tail"
+#define GREP "/bin/grep"
+
 static unsigned long int parse_ulong(char *str, int base);
-void alarm_handler(int sign);
 
 int main(int argc, char *argv[]) {
 
   unsigned long int timer;
-  int file;
 
+  // Verify arguments validity
   if (argc < 4) {
-    printf("Usage: %s <seconds> <query> <file1> <file...>.\n", argv[0]);
+    printf("Usage: %s <seconds> <query> <file to monitor> <...> .\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
   if ((timer = parse_ulong(argv[1], 10)) == ULONG_MAX)
     exit(EXIT_FAILURE);
 
-  
-  file = open(argv[3], O_RDONLY);
-  if (file == -1) {
-    perror(argv[3]);
-    exit(EXIT_FAILURE);
-  }
-  close(file);
- 
-  pid_t childpid;  
-  int fd[2];
-  if(pipe (fd) == -1)
+  // Set user defined countdown timer
+  alarm(timer);
+
+  // Create two arrays containing file descriptors needed to establish pipe connections
+  int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
+  int fd2[2]; // pipe connection between grep and monitor
+  pid_t childpid1, childpid2;
+
+  // First create pipes
+  if(pipe (fd1) == -1)
     perror("Failed to create the pipe");
 
-  childpid = fork();
-
-  if (childpid == -1){
+  // Followed by fork
+  // Create child1 responsible for executing tail command
+  childpid1 = fork();
+  if (childpid1 == -1){
     perror("Failed to fork");
     exit(EXIT_FAILURE);
   }
 
   /* parent code*/
-  if (childpid){
-    close(fd[0]);
-    dup2(fd[1], STDOUT_FILENO);
-    close(fd[1]);
-    execlp("tail", "tail", "ler", NULL);
-  }
+  //for ( ; ;);
 
-  /* child code */
-  else{
-    execlp("grep", "grep", "--line-buffered", "-w", "adeus", STDOUT_FILENO, NULL);
+  /* child1 code */
+  if (childpid1 == 0) {
+   
+    // Create child2 responsible for executing grep command
+    childpid2 = fork();
+    if (childpid2 == -1){
+      perror("Failed to fork");
+      exit(EXIT_FAILURE);
+    }
+   
+    /* child2 code */
+    if (childpid2 == 0) {
+      if ( execl(GREP, "grep", "--line-buffered", "-w", "adeus", "ler", (char*) 0 < 0) < 0 );
+      perror("execl error");
+    }
+    else{
+      if ( execl(TAIL,"tail", "ler", (char*) 0 ) < 0 )
+	perror("execl error");
+    }
   }
-
   exit(EXIT_SUCCESS);
-}
-
-
-
-void alarm_handler(int sign) {
-  printf("Alarm received...\n");
 }
 
 static unsigned long int parse_ulong(char *str, int base) {
@@ -80,7 +92,7 @@ static unsigned long int parse_ulong(char *str, int base) {
   char *endptr;
   unsigned long int timer = strtoul(str, &endptr, base);
 
- /* Check for various possible errors */
+  /* Check for various possible errors */
   if((errno == ERANGE && timer == ULONG_MAX) || (errno != 0 && timer == 0)){
     perror ("strtoul conversion error");
     return ULONG_MAX;
@@ -88,37 +100,19 @@ static unsigned long int parse_ulong(char *str, int base) {
 
   if (endptr == str){
 #ifdef DEBUG  
-  fprintf(stderr, "No digits were found\n");
+    fprintf(stderr, "No digits were found\n");
 #endif
     return ULONG_MAX;
   }
-
+  
   if (*endptr != '\0'){
-#ifdef DEBUG  
-  fprintf(stderr, "Non digit char found\n");
+#ifdef DEBUG 
+    fprintf(stderr, "Non digit char found\n");
 #endif
-  return ULONG_MAX;
+    return ULONG_MAX;
   }
-  printf("strtoul() returned %lu\n", timer);
-
+  //printf("strtoul() returned %lu\n", timer);
+  
   /* Successful conversion*/
   return timer; 
 }
-
-
-  /* struct sigaction action; */
-/*   sigset_t sigmask; */
-/*   // install SIGALRM handler */
-/*   action.sa_handler = alarm_handler; */
-/*   sigemptyset(&action.sa_mask); //all signals are delivered */
-/*   action.sa_flags = 0; */
-/*   sigaction(SIGALRM,&action,NULL); */
-
-/*   // prepare mask for 'sigsuspend' */
-/*   sigfillset(&sigmask); //all signals blocked ... */
-/*   sigdelset(&sigmask,SIGALRM); //...except SIGALRM */
-/*   alarm(timer); */
-/*   printf("Pausing ...\n"); */
-  
-/*   //while (!alarmflag) pause(); //REPLACED BY 'sigsuspend' */
-/*   sigsuspend(&sigmask); */

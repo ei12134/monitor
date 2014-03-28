@@ -1,4 +1,4 @@
-// compile using debug flag for error messages
+// Compile using debug flag for error messages
 //
 // gcc monitor.c -o monitor -Wall -DDEBUG
 
@@ -30,11 +30,11 @@
 
 void sig_pipe(int signo);
 void sig_alarm(int signo);
-unsigned long int parse_ulong(char *str, int base);
+long int parse_long(char *str, int base);
 
 int main(int argc, char *argv[]) {
 
-  unsigned long int timer;
+  long int timer;
   int status;
 
   // Verify arguments validity
@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  if ((timer = parse_ulong(argv[1], 10)) == ULONG_MAX)
+  if ((timer = parse_long(argv[1], 10)) == LONG_MAX)
     exit(EXIT_FAILURE);
 
   // Set user defined countdown timer
@@ -58,9 +58,11 @@ int main(int argc, char *argv[]) {
   // sig_pipe handler
   signal(SIGPIPE, sig_pipe);
 
-  for ( ; ;) {
+  for ( ; ; ) {
     sleep(5);
 
+
+    // use "execl("stat", "stat","-c %y", argv[3], (char*) 0) instead"
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
     
@@ -133,31 +135,40 @@ void sig_alarm(int signo){
 }
 
 
-unsigned long int parse_ulong(char *str, int base) {
+long int parse_long(char *str, int base) {
 
   char *endptr;
-  unsigned long int timer = strtoul(str, &endptr, base);
+  long int timer = strtol(str, &endptr, base);
 
   /* Check for various possible errors */
-  if((errno == ERANGE && timer == ULONG_MAX) || (errno != 0 && timer == 0)){
-    perror ("strtoul conversion error");
-    return ULONG_MAX;
+  
+  if ((errno == ERANGE && (timer == LONG_MAX || timer == LONG_MIN)) || (errno != 0 && timer == 0)) {
+    perror("strtol");
+    return LONG_MAX;
   }
 
   if (endptr == str){
 #ifdef DEBUG  
     fprintf(stderr, "No digits were found\n");
 #endif
-    return ULONG_MAX;
+    return LONG_MAX;
   }
   
   if (*endptr != '\0'){
 #ifdef DEBUG 
     fprintf(stderr, "Non digit char found\n");
 #endif
-    return ULONG_MAX;
+    return LONG_MAX;
   }
-  //printf("strtoul() returned %lu\n", timer);
+
+  if (timer < 0) {
+#ifdef DEBUG
+    fprintf(stderr, "Negative number\n");
+#endif
+  return LONG_MAX;
+}
+
+  printf("strtol() returned %lu\n", timer);
   
   /* Successful conversion*/
   return timer; 

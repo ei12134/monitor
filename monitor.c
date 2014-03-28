@@ -58,16 +58,12 @@ int main(int argc, char *argv[]) {
   // sig_pipe handler
   signal(SIGPIPE, sig_pipe);
 
-  for ( ; ; ) {
-    sleep(5);
-
-
-    // use "execl("stat", "stat","-c %y", argv[3], (char*) 0) instead"
-    time_t t = time(NULL);
-    struct tm tm = *localtime(&t);
+  // use "execl("stat", "stat","-c %y", argv[3], (char*) 0) instead"
+  /* time_t t = time(NULL); */
+  /* struct tm tm = *localtime(&t); */
     
-    printf("%d-%d-%d %d:%d:%d - %s.txt - ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, argv[3]);
-    fflush(stdout);
+  /* printf("%d-%d-%d %d:%d:%d - %s.txt - ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, argv[3]); */
+  /* fflush(stdout); */
 
   // First create pipes
   if(pipe (fd1) == -1)
@@ -82,8 +78,8 @@ int main(int argc, char *argv[]) {
   }
 
   /* parent code*/ 
-  //if (childpid1 > 0)
-  // wait(&status);  
+  if (childpid1 > 0)
+    wait(&status);  
 
   /* child1 code */
   if (childpid1 == 0) {
@@ -107,7 +103,7 @@ int main(int argc, char *argv[]) {
       }
       close(fd1[WRITE]);
       
-      execl(TAIL,"tail", "-n 1", argv[3], (char*) 0 );
+      execl(TAIL,"tail","-n 0", "-f" , argv[3], (char*) 0 );
       perror("tail execl error");
     }
     
@@ -119,7 +115,7 @@ int main(int argc, char *argv[]) {
       perror("grep execl error");
     }
   }
-  }
+ 
   exit(EXIT_SUCCESS);
 }
 
@@ -136,7 +132,7 @@ void sig_alarm(int signo){
 
 
 long int parse_long(char *str, int base) {
-
+  
   char *endptr;
   long int timer = strtol(str, &endptr, base);
 
@@ -165,10 +161,12 @@ long int parse_long(char *str, int base) {
 #ifdef DEBUG
     fprintf(stderr, "Negative number\n");
 #endif
-  return LONG_MAX;
-}
-
+    return LONG_MAX;
+  }
+  
+#ifdef DEBUG  
   printf("strtol() returned %lu\n", timer);
+#endif
   
   /* Successful conversion*/
   return timer; 

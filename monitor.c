@@ -2,7 +2,6 @@
 //
 // gcc monitor.c -o monitor -Wall -DDEBUG
 
-#include <assert.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -19,11 +18,8 @@
 #define READ 0
 #define WRITE 1
 #define MAXLINE 4096
-#define TAIL "/usr/bin/tail"
-#define GREP "/bin/grep"
-#define STAT "/usr/bin/stat"
-#define DATE "/bin/date"
 
+void sig_quit(int signo);
 void sig_pipe(int signo);
 void sig_alarm(int signo);
 long int parse_long(char *str, int base);
@@ -33,7 +29,7 @@ int main(int argc, char *argv[]) {
 
   long int timer;
   int status;
-
+  
   // Verify arguments validity
   if (argc < 4) {
     printf("Usage: %s <seconds> <query> <file to monitor> <...> .\n", argv[0]);
@@ -45,10 +41,6 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  // Set user defined countdown timer
-  signal(SIGALRM,sig_alarm);
-  alarm(timer);
-
   // Create two arrays containing file descriptors needed to establish pipe connections
   int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
   int fd2[2]; // pipe connection between grep and monitor
@@ -56,10 +48,18 @@ int main(int argc, char *argv[]) {
   pid_t childpid1, childpid2, childpid3;
   char line[MAXLINE];
 
-  // sig_pipe handler
+  /* Set Signals handlers */
+  // Prepare sig_quit handler
+  signal(SIGQUIT,sig_quit);
+  parent_pid = getpid();
+  // Prepare sig_alarm handler
+  signal(SIGALRM,sig_alarm);
+  // Set user defined countdown timer
+  alarm(timer);
+  // Prepare sig_pipe handler
   signal(SIGPIPE, sig_pipe);
 
-  // First create pipes
+  // Create pipes
   if (pipe (fd1) == -1)
     perror("Failed to create the pipe 1");
 
@@ -70,65 +70,75 @@ int main(int argc, char *argv[]) {
   // Create child1 responsible for executing tail command
   childpid1 = fork();
   if (childpid1 == -1){
-    perror("Failed to fork");
+    perror("Failed to fork childpid1");
     exit(EXIT_FAILURE);
   }
 
   /* parent code */
   if (childpid1 > 0) {
+#ifdef DEBUG    
     printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
+#endif
     close(fd1[READ]);
     close(fd2[WRITE]);
     dup2(fd2[READ],STDIN_FILENO);
     
     while (fgets(line, MAXLINE,stdin) != NULL) {
-      n=strlen(line)+1;
+      n=strlen(line);
       write(fd1[WRITE],line,n);
       n=read(fd2[READ],line,MAXLINE); // waits for grep output
       if (n==0) {
-	perror("child closed pipe");
+	perror("grep child closed pipe");
 	break;
       } 
-      line[n-1]= '"';
-      line[n]=0; // null ending char is not received, so "add" it
+      line[n-1]='"'; // substitute /n ?
+      line[n]=0; // end char
 
       // Display system time
-      char buff[100];
+      char timeBuffer[50];
       time_t now = time (0);
       
-      strftime ( buff, 100, "%Y-%m-%dT%H:%M:%S", localtime (&now));
-      printf ("%s - %s - \"%s\"", buff,  argv[3], line);
+      strftime ( timeBuffer, 50, "%Y-%m-%dT%H:%M:%S", localtime (&now));
+      printf ("%s - %s - \"%s\n", timeBuffer,  argv[3], line);
     }    
     wait(&status);  
   }
-
+  
   // Child1 code - file checker
   if (childpid1 == 0){
-
+#ifdef DEBUG
+    printf("PID of first child = %d; PPID = %d\n", getpid(), getppid());
+#endif
     setpgrp();
     childpid2 = fork();
+    if (childpid2 == -1){
+      perror("Failed to fork childpid2");
+      exit(EXIT_FAILURE);
+    }
     if (childpid2 > 0){
       while (1){
 	file = open(argv[3], O_RDONLY);
 	if (file == -1) {
 	  perror(argv[3]);
-	  printf("file does not exist anymore");
+	  printf("%s does not exist anymore\n",argv[3]);
 	  kill(-getpgrp(), SIGUSR1);
 	}
 	sleep(5);
       }
+      wait(&status);
     }
     if (childpid2 == 0){
       /* Child2 code - tail */
       if (childpid2 == 0) {
+#ifdef DEBUG
 	printf("PID of tail child = %d; PPID = %d\n", getpid(), getppid());
+#endif
 	// Create child3 responsible for executing grep command
 	childpid3 = fork();
-	
 	if (childpid3 == -1){
-	  perror("Failed to fork");
+	  perror("Failed to fork childpid3");
 	  exit(EXIT_FAILURE);
-	}
+	}    
 	
 	if (childpid3 > 0){
 	  // Redirect output through pipe 1 for grep
@@ -139,13 +149,15 @@ int main(int argc, char *argv[]) {
 	  }
 	  close(fd1[WRITE]);
       
-	  execl(TAIL,"tail","-n 0", "-f" , argv[3], (char*) 0 );
+	  execlp("tail","tail","-n 0", "-f" , argv[3], (char*) 0 );
 	  perror("tail execl error");
 	}
     
 	/* Child3 code  - grep */
 	else if (childpid3 == 0) {
+#ifdef DEBUG	
 	  printf("PID of grep child = %d; PPID = %d\n", getpid(), getppid());
+#endif
 	  // Receive tail input redirected through pipe 1
 	  close(fd1[WRITE]);
 	  dup2(fd1[READ],STDIN_FILENO);
@@ -156,7 +168,7 @@ int main(int argc, char *argv[]) {
 	    perror("dup2 error to stdout in pipe 2");
 	  close(fd2[WRITE]);
      
-	  execl(GREP, "grep", "--line-buffered", argv[2], (char*) 0);
+	  execlp("grep", "grep", "--line-buffered", argv[2], (char*) 0);
 	  perror("grep execl error");
 	}
       } 
@@ -166,7 +178,9 @@ int main(int argc, char *argv[]) {
 }
 
 void sig_pipe(int signo) {
+#ifdef DEBUG
   printf("SIGPIPE caught\n");
+#endif
   exit(EXIT_FAILURE);
 }
 
@@ -175,16 +189,17 @@ void sig_alarm(int signo) {
   printf("SIGALARM caught\n");
 #endif
   printf("User set timer expired - monitor stopped\n");
-  kill(-parent_pid, SIGQUIT);
+  kill(-parent_pid, SIGUSR1);
   exit(EXIT_SUCCESS);
 }
  
-void sigquit_handler (int sig) {
-  assert(sig == SIGQUIT);
+void sig_quit(int signo) {
+#ifdef DEBUG
+  printf("SIGQUIT caught\n");
+#endif
   pid_t self = getpid();
   if (parent_pid != self) _exit(EXIT_SUCCESS);
 }
-
 
 long int parse_long(char *str, int base) {
   
@@ -219,7 +234,7 @@ long int parse_long(char *str, int base) {
   }
   
 #ifdef DEBUG  
-  printf("strtol() returned %ld\n", timer);
+  printf("strtol() successfuly returned %ld\n", timer);
 #endif
 
   /* Successful conversion*/

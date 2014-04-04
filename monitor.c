@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  /* parent code*/ 
+  /* parent code */
   if (childpid1 > 0) {
     printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
     close(fd1[READ]);
@@ -82,36 +82,40 @@ int main(int argc, char *argv[]) {
     dup2(fd2[READ],STDIN_FILENO);
     
     while (fgets(line, MAXLINE,stdin) != NULL) {
-      n=strlen(line);
+      n=strlen(line)+1;
       write(fd1[WRITE],line,n);
       n=read(fd2[READ],line,MAXLINE); // waits for grep output
       if (n==0) {
 	perror("child closed pipe");
 	break;
       } 
+      line[n-1]= '"';
       line[n]=0; // null ending char is not received, so "add" it
 
-
+      // Display system time
       char buff[100];
       time_t now = time (0);
-
+      
       strftime ( buff, 100, "%Y-%m-%dT%H:%M:%S", localtime (&now));
-      printf ("%s - %s.txt - %s", buff,  argv[3], line);
+      printf ("%s - %s - \"%s\"", buff,  argv[3], line);
     }    
     wait(&status);  
   }
 
   // Child1 code - file checker
   if (childpid1 == 0){
+
+    setpgrp();
     childpid2 = fork();
     if (childpid2 > 0){
       while (1){
-	sleep(5);
 	file = open(argv[3], O_RDONLY);
 	if (file == -1) {
 	  perror(argv[3]);
 	  printf("file does not exist anymore");
+	  kill(-getpgrp(), SIGUSR1);
 	}
+	sleep(5);
       }
     }
     if (childpid2 == 0){
@@ -152,7 +156,7 @@ int main(int argc, char *argv[]) {
 	    perror("dup2 error to stdout in pipe 2");
 	  close(fd2[WRITE]);
      
-	  execl(GREP, "grep", "--line-buffered", "-w", argv[2], (char*) 0);
+	  execl(GREP, "grep", "--line-buffered", argv[2], (char*) 0);
 	  perror("grep execl error");
 	}
       } 

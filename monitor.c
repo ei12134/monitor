@@ -1,5 +1,4 @@
 // Compile using debug flag for error messages
-//
 // gcc monitor.c -o monitor -Wall -DDEBUG
 
 #include <stdlib.h>
@@ -20,10 +19,11 @@
 #define MAXLINE 4096
 
 void sig_quit(int signo);
+void sig_int(int signo);
 void sig_pipe(int signo);
 void sig_alarm(int signo);
 long int parse_long(char *str, int base);
-pid_t parent_pid;
+pid_t parent_pid, childpid1;
 
 int main(int argc, char *argv[]) {
 
@@ -45,13 +45,16 @@ int main(int argc, char *argv[]) {
   int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
   int fd2[2]; // pipe connection between grep and monitor
   int file, n;
-  pid_t childpid1, childpid2, childpid3;
+  pid_t childpid2, childpid3;
   char line[MAXLINE];
 
   /* Set Signals handlers */
   // Prepare sig_quit handler
   signal(SIGQUIT,sig_quit);
   parent_pid = getpid();
+
+  signal(SIGINT,sig_int);
+
   // Prepare sig_alarm handler
   signal(SIGALRM,sig_alarm);
   // Set user defined countdown timer
@@ -184,21 +187,28 @@ void sig_pipe(int signo) {
   exit(EXIT_FAILURE);
 }
 
+void sig_quit(int signo){
+#ifdef DEBUG
+  printf("SIGQUIT caught\n");
+#endif
+  kill(-getpgrp(), SIGUSR1);
+}
+
 void sig_alarm(int signo) {
 #ifdef DEBUG
   printf("SIGALARM caught\n");
 #endif
   printf("User set timer expired - monitor stopped\n");
-  kill(-parent_pid, SIGUSR1);
+  kill(childpid1, SIGQUIT);
   exit(EXIT_SUCCESS);
 }
  
-void sig_quit(int signo) {
+void sig_int(int signo) {
 #ifdef DEBUG
-  printf("SIGQUIT caught\n");
+  printf("SIGINT caught\n");
 #endif
-  pid_t self = getpid();
-  if (parent_pid != self) _exit(EXIT_SUCCESS);
+  kill(childpid1, SIGQUIT);
+  exit(EXIT_SUCCESS);
 }
 
 long int parse_long(char *str, int base) {

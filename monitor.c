@@ -23,14 +23,9 @@ void sig_int(int signo);
 void sig_pipe(int signo);
 void sig_alarm(int signo);
 long int parse_long(char *str, int base);
-pid_t childpid1;
-int nFiles;
+int *childpid1, nFiles;
 
 int main(int argc, char *argv[]) {
-
-	long int timer;
-	int status;
-	nFiles = argc - 3;
 
 	// Verify arguments validity
 	if (argc < 4) {
@@ -39,82 +34,82 @@ int main(int argc, char *argv[]) {
 		exit (EXIT_FAILURE);
 	}
 
+	if (argc > 23) {
+		printf("Too many files to monitor (Maximum = 20)\n");
+		exit (EXIT_FAILURE);
+	}
+
+	long int timer;
 	if ((timer = parse_long(argv[1], 10)) == LONG_MAX) {
 		printf("Enter a valid timer number\n");
 		exit (EXIT_FAILURE);
 	}
+
+	
+	int status;
+	nFiles = argc - 3;
+	childpid1 = malloc(sizeof(int) * nFiles);
+	// Create two arrays containing file descriptors needed to establish pipe connections
+	int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
+	int fd2[2]; // pipe connection between grep and monitor
+	pid_t childpid2, childpid3, childpid4;
 
 	/* Set Signals handlers */
 	// Prepare sig_quit handler
 	signal(SIGQUIT, sig_quit);
 	// Prepare sig_int handler
 	signal(SIGINT, sig_int);
-	// Prepare sig_pipe handler
-	signal(SIGPIPE, sig_pipe);
 	// Prepare sig_alarm handler
 	signal(SIGALRM, sig_alarm);
 	// Set user defined countdown timer
 	alarm(timer);
+	// Prepare sig_pipe handler
+	signal(SIGPIPE, sig_pipe);
 
+	// fork and create as many aux process needed
 	int i;
 	for (i = 3; i < argc; i++) {
-		// Followed by fork
-		// Create child1 responsible for executing tail command
-		childpid1 = fork();
-		if (childpid1 == -1) {
+
+		childpid1[i - 3] = fork();
+		if (childpid1[i - 3] == -1) {
 			perror("Failed to fork childpid1");
 			exit (EXIT_FAILURE);
 		}
-		/* parent code */
-		if (childpid1 > 0) {
-#ifdef DEBUG    
-			printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
-#endif   
-//			int j = 0;
-//
-//			if (j > nFiles - 1) {
-//
-//				while (1) {
-//					int file;
-//					for (j = 3; j < argc; j++) {
-//						file = open(argv[i], O_RDONLY);
-//						if (file == -1) {
-//							perror(argv[j]);
-//							printf("%s does not exist anymore\n", argv[j]);
-//							kill(-getpgrp(), SIGUSR1);
-//						}
-//					}
-//					sleep(5);
-//				}
-//		}
-			waitpid(-1, &status, WNOHANG);
-		}
-		/* aux code */
-		if (childpid1 == 0) {
-#ifdef DEBUG
-			printf("PID of aux child = %d; PPID = %d\n", getpid(), getppid());
-#endif
 
-			// Create two arrays containing file descriptors needed to establish pipe connections
-			int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
-			int fd2[2]; // pipe connection between grep and monitor
-			int n;
-			pid_t childpid2, childpid3;
-			char line[MAXLINE];
-			// Create pipes
+		/* parent code */
+		if (childpid1[i - 3] > 0) {
+#ifdef DEBUG
+			printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
+#endif	
+			int z;
+			if (i >= argc - 1)
+				for (z = 0; z < nFiles; z++)
+					wait(&status);
+			else
+				waitpid(-1, &status, WNOHANG);
+		}
+		/* stdout process */
+		if (childpid1[i - 3] == 0) {
+#ifdef DEBUG
+			printf("PID of first child = %d; PPID = %d\n", getpid(), getppid());
+#endif
+			setpgrp();
+			// create pipes
 			if (pipe(fd1) == -1)
 				perror("Failed to create the pipe 1");
 
 			if (pipe(fd2) == -1)
 				perror("Failed to create the pipe 2");
 
-			setpgrp();
 			childpid2 = fork();
 			if (childpid2 == -1) {
 				perror("Failed to fork childpid2");
 				exit (EXIT_FAILURE);
 			}
 			if (childpid2 > 0) {
+				int n;
+				char line[MAXLINE];
+
 				close(fd1[READ]);
 				close(fd2[WRITE]);
 				dup2(fd2[READ], STDIN_FILENO);
@@ -129,27 +124,52 @@ int main(int argc, char *argv[]) {
 					}
 					line[n - 1] = '"'; // substitute /n ?
 					line[n] = 0; // end char
+
 					// Display system time
 					char timeBuffer[50];
 					time_t now = time(0);
+
 					strftime(timeBuffer, 50, "%Y-%m-%dT%H:%M:%S",
 							localtime(&now));
 					printf("%s - %s - \"%s\n", timeBuffer, argv[i], line);
 				}
 			}
-			if (childpid2 == 0) {
-				// create child3 responsible for executing grep command
-				childpid3 = fork();
-				if (childpid3 == -1) {
+			wait(&status);
+		}
+		/* file checker */
+		if (childpid2 == 0) {
+			childpid3 = fork();
+			if (childpid3 == -1) {
+				perror("Failed to fork childpid3");
+				exit (EXIT_FAILURE);
+			}
+			if (childpid3 > 0) {
+				int file;
+				while (1) {
+					file = open(argv[i], O_RDONLY);
+					if (file == -1) {
+						perror(argv[i]);
+						printf("%s does not exist anymore\n", argv[i]);
+						kill(-getpgrp(), SIGUSR1);
+					}
+					sleep(5);
+				}
+				wait(&status);
+			}
+			/* tail process */
+			if (childpid3 == 0) {
+#ifdef DEBUG
+				printf("PID of tail child = %d; PPID = %d\n", getpid(), getppid());
+#endif
+// Create child3 responsible for executing grep command
+				childpid4 = fork();
+				if (childpid4 == -1) {
 					perror("Failed to fork childpid3");
 					exit (EXIT_FAILURE);
 				}
-				/* tail code */
-				if (childpid3 > 0) {
-#ifdef DEBUG
-					printf("PID of tail child = %d; PPID = %d\n", getpid(), getppid());
-#endif
-					// Redirect output through pipe 1 for grep
+
+				if (childpid4 > 0) {
+// Redirect output through pipe 1 for grep
 					close(fd1[READ]);
 					if (fd1[WRITE] != STDOUT_FILENO) {
 						if (dup2(fd1[WRITE], STDOUT_FILENO) != STDOUT_FILENO)
@@ -161,9 +181,9 @@ int main(int argc, char *argv[]) {
 					perror("tail execl error");
 				}
 
-				/* grep code */
-				else if (childpid3 == 0) {
-#ifdef DEBUG	
+				/* grep process */
+				else if (childpid4 == 0) {
+#ifdef DEBUG
 					printf("PID of grep child = %d; PPID = %d\n", getpid(), getppid());
 #endif
 					// Receive tail input redirected through pipe 1
@@ -183,6 +203,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
+	free(childpid1);
 	exit (EXIT_SUCCESS);
 }
 
@@ -205,7 +226,11 @@ void sig_alarm(int signo) {
 	printf("SIGALARM caught\n");
 #endif
 	printf("User set timer expired - monitor stopped\n");
-	kill(childpid1, SIGQUIT);
+	int i;
+	for (i = 0; i < nFiles; i++)
+		kill(childpid1[i], SIGQUIT);
+
+	free(childpid1);
 	exit (EXIT_SUCCESS);
 }
 
@@ -213,7 +238,11 @@ void sig_int(int signo) {
 #ifdef DEBUG
 	printf("SIGINT caught\n");
 #endif
-	kill(childpid1, SIGQUIT);
+	int i;
+	for (i = 0; i < nFiles; i++)
+		kill(childpid1[i], SIGQUIT);
+
+	free(childpid1);
 	exit (EXIT_SUCCESS);
 }
 
@@ -230,14 +259,14 @@ long int parse_long(char *str, int base) {
 	}
 
 	if (endptr == str) {
-#ifdef DEBUG  
+#ifdef DEBUG
 		fprintf(stderr, "No digits were found\n");
 #endif
 		return LONG_MAX;
 	}
 
 	if (*endptr != '\0') {
-#ifdef DEBUG 
+#ifdef DEBUG
 		fprintf(stderr, "Non digit char found\n");
 #endif
 		return LONG_MAX;
@@ -249,11 +278,10 @@ long int parse_long(char *str, int base) {
 #endif
 		return LONG_MAX;
 	}
-
-#ifdef DEBUG  
+#ifdef DEBUG
 	printf("strtol() successfuly returned %ld\n", timer);
 #endif
 
-	/* Successful conversion */
+	/* Successful conversion*/
 	return timer;
 }

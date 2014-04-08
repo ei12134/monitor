@@ -23,7 +23,7 @@ void sig_int(int signo);
 void sig_pipe(int signo);
 void sig_alarm(int signo);
 long int parse_long(char *str, int base);
-int *childpid1, nFiles;
+int *childpid1, childpid4, nFiles;
 
 int main(int argc, char *argv[]) {
 
@@ -45,14 +45,13 @@ int main(int argc, char *argv[]) {
 		exit (EXIT_FAILURE);
 	}
 
-	
 	int status;
 	nFiles = argc - 3;
 	childpid1 = malloc(sizeof(int) * nFiles);
 	// Create two arrays containing file descriptors needed to establish pipe connections
 	int fd1[2]; // pipe connection between tail & grep (both separate monitor childs)
 	int fd2[2]; // pipe connection between grep and monitor
-	pid_t childpid2, childpid3, childpid4;
+	pid_t childpid2, childpid3;
 
 	/* Set Signals handlers */
 	// Prepare sig_quit handler
@@ -82,10 +81,43 @@ int main(int argc, char *argv[]) {
 			printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
 #endif	
 			int z;
-			if (i >= argc - 1)
-				for (z = 0; z < nFiles; z++)
-					wait(&status);
-			else
+			if (i >= argc - 1) {
+				childpid4 = fork();
+				if (childpid4 == -1) {
+					perror("Failed to fork childpid4");
+					exit (EXIT_FAILURE);
+				}
+				if (childpid4 > 0)
+					for (z = 0; z < nFiles; z++)
+						wait(&status);
+
+				/* file checker */
+				if (childpid4 == 0) {
+					int file;
+					while (nFiles > 0) {
+						int i;
+						for (i = 0; i < nFiles; i++) {
+							file = open(argv[i + 3], O_RDONLY);
+							if (file == -1) {
+								perror(argv[i + 3]);
+								printf("%s does not exist anymore\n",
+										argv[i + 3]);
+								kill(childpid1[i], SIGQUIT);
+								if (nFiles > 1) {
+									int c, d;
+									for (c = i; c < nFiles - 1; c++)
+										childpid1[c] = childpid1[c + 1];
+
+									for (d = i + 3; d < argc - 1; d++)
+										argv[d] = argv[d + 1];
+								}
+								nFiles--;
+							}
+						}
+						sleep(5);
+					}
+				}
+			} else
 				waitpid(-1, &status, WNOHANG);
 		}
 		/* stdout process */
@@ -135,40 +167,20 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			wait(&status);
-		}
-		/* file checker */
-		if (childpid2 == 0) {
-			childpid3 = fork();
-			if (childpid3 == -1) {
-				perror("Failed to fork childpid3");
-				exit (EXIT_FAILURE);
-			}
-			if (childpid3 > 0) {
-				int file;
-				while (1) {
-					file = open(argv[i], O_RDONLY);
-					if (file == -1) {
-						perror(argv[i]);
-						printf("%s does not exist anymore\n", argv[i]);
-						kill(-getpgrp(), SIGUSR1);
-					}
-					sleep(5);
-				}
-				wait(&status);
-			}
+
 			/* tail process */
-			if (childpid3 == 0) {
+			if (childpid2 == 0) {
 #ifdef DEBUG
 				printf("PID of tail child = %d; PPID = %d\n", getpid(), getppid());
 #endif
 // Create child3 responsible for executing grep command
-				childpid4 = fork();
-				if (childpid4 == -1) {
+				childpid3 = fork();
+				if (childpid3 == -1) {
 					perror("Failed to fork childpid3");
 					exit (EXIT_FAILURE);
 				}
 
-				if (childpid4 > 0) {
+				if (childpid3 > 0) {
 // Redirect output through pipe 1 for grep
 					close(fd1[READ]);
 					if (fd1[WRITE] != STDOUT_FILENO) {
@@ -182,7 +194,7 @@ int main(int argc, char *argv[]) {
 				}
 
 				/* grep process */
-				else if (childpid4 == 0) {
+				else if (childpid3 == 0) {
 #ifdef DEBUG
 					printf("PID of grep child = %d; PPID = %d\n", getpid(), getppid());
 #endif
@@ -203,6 +215,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
+
 	free(childpid1);
 	exit (EXIT_SUCCESS);
 }
@@ -230,6 +243,8 @@ void sig_alarm(int signo) {
 	for (i = 0; i < nFiles; i++)
 		kill(childpid1[i], SIGQUIT);
 
+	kill(childpid4, SIGUSR1);
+
 	free(childpid1);
 	exit (EXIT_SUCCESS);
 }
@@ -241,6 +256,8 @@ void sig_int(int signo) {
 	int i;
 	for (i = 0; i < nFiles; i++)
 		kill(childpid1[i], SIGQUIT);
+
+	kill(childpid4, SIGUSR1);
 
 	free(childpid1);
 	exit (EXIT_SUCCESS);

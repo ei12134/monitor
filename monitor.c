@@ -93,12 +93,10 @@ int main(int argc, char *argv[]) {
 
 				/* file checker */
 				if (childpid4 == 0) {
-					int file;
 					while (nFiles > 0) {
 						int i;
 						for (i = 0; i < nFiles; i++) {
-							file = open(argv[i + 3], O_RDONLY);
-							if (file == -1) {
+							if (access(argv[i + 3], F_OK) == -1) {
 								perror(argv[i + 3]);
 								printf("%s does not exist anymore\n",
 										argv[i + 3]);

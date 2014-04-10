@@ -1,10 +1,16 @@
-CC=gcc
-PROG= monitor
-CFLAGS= -I -Wall
-SRCS= monitor.c
-monitor:
-	cc $(SRCS) -o $(PROG) $(CFLAGS)
+CC = gcc
+PROG = monitor
+CFLAGS = -Wall
+SRCS = monitor.c
+BIN_DIR = bin
 
+all: bin monitor
+
+bin:
+	mkdir -p ${BIN_DIR}
+
+monitor:
+	cc $(SRCS) -o $(BIN_DIR)/$(PROG) $(CFLAGS)
 
 clean:
-	@rm -f $(PROG) *.o core
+	@rm -f $(BIN_DIR)/$(PROG) $(BIN_DIR)/*.o core && rm -f -r bin

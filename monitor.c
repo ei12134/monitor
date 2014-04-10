@@ -117,10 +117,10 @@ int main(int argc, char *argv[]) {
 	nFiles = argc - 3;
 
 	/* Alocate memory for childpid's array */
-	childpid1 = malloc(sizeof(int) * nFiles);
+	childpid1 = malloc(sizeof(int) * nFiles;
 	if (childpid1 == NULL) {
 		fprintf(stderr,
-				"Fatal memory exhausted (malloc of %d bytes) - Use less files to monitor\n",
+				"Memory exhausted (malloc of %d bytes) - Use less files to monitor\n",
 				nFiles);
 		exit (EXIT_FAILURE);
 	}

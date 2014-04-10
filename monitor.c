@@ -84,9 +84,9 @@ long int parse_long(char *str, int base) {
 		return LONG_MAX;
 	}
 
-	if (timer < 0) {
+	if (timer <= 0) {
 #ifdef DEBUG
-		fprintf(stderr, "Negative number\n");
+		fprintf(stderr, "Non positive number\n");
 #endif
 		return LONG_MAX;
 	}

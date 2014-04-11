@@ -96,7 +96,7 @@ long int parse_long(char *str, int base) {
   printf("strtol() successfuly returned %ld\n", timer);
 #endif
 
-  /* Successful conversion*/
+  /* Successful conversion */
   return timer;
 }
 
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
       exit (EXIT_FAILURE);
     }
 
-    /* parent code */
+    /* Parent code */
     if (childpid1[i - 3] > 0) {
 #ifdef DEBUG
       printf("PID of parent = %d; PPID = %d\n", getpid(), getppid());
@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
 	  for (z = 0; z < nFiles; z++)
 	    wait(&status);
 
-	/* file checker */
+	/* File checker */
 	if (childpid4 == 0) {
 	  while (nFiles > 0) {
 	    int i;
@@ -209,7 +209,7 @@ int main(int argc, char *argv[]) {
       printf("PID of first child = %d; PPID = %d\n", getpid(), getppid());
 #endif
       setpgrp();
-      /* create pipes */
+      /* Create pipes */
       if (pipe(fd1) == -1)
 	perror("Failed to create the pipe 1");
 
@@ -228,16 +228,11 @@ int main(int argc, char *argv[]) {
 	close(fd2[WRITE]);
 	dup2(fd2[READ], STDIN_FILENO);
 
-	/* waits for grep output */
-	while ( (n = read(fd2[READ], line, MAXLINE)) > 0) {
-	  n = strlen(line);
-	  if (n == 0) {
-	    perror("grep child closed pipe");
-	    break;
-	  }
-	  /* substitute /n ? */
+	/* Reads grep output */
+	while ( (n = read(fd2[READ], line, MAXLINE)) > 0 ) {
+	  /* Substitute /n ? */
 	  line[n - 1] = '"';
-	  /* end char */
+	  /* End char */
 	  line[n] = 0;
 
 	  /* Display system time */
@@ -251,7 +246,7 @@ int main(int argc, char *argv[]) {
       }
       wait(&status);
 
-      /* tail process */
+      /* Tail process */
       if (childpid2 == 0) {
 #ifdef DEBUG
 	printf("PID of tail child = %d; PPID = %d\n", getpid(), getppid());
@@ -276,7 +271,7 @@ int main(int argc, char *argv[]) {
 	  perror("tail execl error");
 	}
 
-	/* grep process */
+	/* Grep process */
 	else if (childpid3 == 0) {
 #ifdef DEBUG
 	  printf("PID of grep child = %d; PPID = %d\n", getpid(), getppid());
@@ -285,7 +280,7 @@ int main(int argc, char *argv[]) {
 	  close(fd1[WRITE]);
 	  dup2(fd1[READ], STDIN_FILENO);
 
-	  /* redirect grep output to parent */
+	  /* Redirect grep output to parent */
 	  close(fd2[READ]);
 	  if (dup2(fd2[WRITE], STDOUT_FILENO) != STDOUT_FILENO)
 	    perror("dup2 error to stdout in pipe 2");

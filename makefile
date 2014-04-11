@@ -13,4 +13,4 @@ monitor:
 	cc $(SRCS) -o $(BIN_DIR)/$(PROG) $(CFLAGS)
 
 clean:
-	@rm -f $(BIN_DIR)/$(PROG) $(BIN_DIR)/*.o core && rm -f -r bin
+	@rm -f $(BIN_DIR)/$(PROG) $(BIN_DIR)/*.o core

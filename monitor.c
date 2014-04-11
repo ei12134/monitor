@@ -225,15 +225,12 @@ int main(int argc, char *argv[]) {
 	int n;
 	char line[MAXLINE];
 
-	close(fd1[READ]);
 	close(fd2[WRITE]);
 	dup2(fd2[READ], STDIN_FILENO);
 
-	while (fgets(line, MAXLINE, stdin) != NULL) {
+	/* waits for grep output */
+	while ( (n = read(fd2[READ], line, MAXLINE)) > 0) {
 	  n = strlen(line);
-	  write(fd1[WRITE], line, n);
-	  /* waits for grep output */
-	  n = read(fd2[READ], line, MAXLINE);
 	  if (n == 0) {
 	    perror("grep child closed pipe");
 	    break;

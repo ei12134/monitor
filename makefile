@@ -10,7 +10,7 @@ bin:
 	mkdir -p ${BIN_DIR}
 
 monitor:
-	cc $(SRCS) -o $(BIN_DIR)/$(PROG) $(CFLAGS)
+	$(CC) $(SRCS) -o $(BIN_DIR)/$(PROG) $(CFLAGS)
 
 clean:
 	@rm -f $(BIN_DIR)/$(PROG) $(BIN_DIR)/*.o core
